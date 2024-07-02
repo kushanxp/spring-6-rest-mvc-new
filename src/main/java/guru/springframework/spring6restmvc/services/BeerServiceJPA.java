@@ -7,7 +7,10 @@ import guru.springframework.spring6restmvc.model.BeerStyle;
 import guru.springframework.spring6restmvc.repositories.BeerRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.context.annotation.Primary;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -16,6 +19,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
@@ -30,10 +34,12 @@ import java.util.concurrent.atomic.AtomicReference;
 public class BeerServiceJPA implements BeerService {
     private final BeerRepository beerRepository;
     private final BeerMapper beerMapper;
+    private final CacheManager cacheManager;
 
     private static final int DEFAULT_PAGE = 0;
     private static final int DEFAULT_PAGE_SIZE = 25;
 
+    @Cacheable(cacheNames = "beerListCache")
     @Override
     public Page<BeerDTO> listBeers(String beerName, BeerStyle beerStyle, Boolean showInventory,
                                    Integer pageNumber, Integer pageSize) {
@@ -130,8 +136,14 @@ public class BeerServiceJPA implements BeerService {
         return atomicReference.get();
     }
 
+    @Caching(evict = {
+            @CacheEvict(cacheNames = "beerCache", key = "#beerId"),
+            @CacheEvict(cacheNames = "beerListCache")
+    })
     @Override
     public Boolean deleteById(UUID beerId) {
+        Objects.requireNonNull(cacheManager.getCache("beerCache")).evict(beerId);
+        Objects.requireNonNull(cacheManager.getCache("beerListCache")).clear();
         if (beerRepository.existsById(beerId)) {
             beerRepository.deleteById(beerId);
             return true;
